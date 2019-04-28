@@ -1,0 +1,212 @@
+---
+title: Coursera Practical Machine Learning Project
+author: Aynalem Mekbib
+date: Apr 20, 2019
+output:html_document:
+   md_document:
+    variant: markdown_github  
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set( warning=FALSE, message=FALSE, fig.width=10, fig.height=5)
+options(width=120)
+```
+## Synopsis
+The goal of this project is to quantify how well people do their exercises regularly by analyzing data collected from accelerometers on exercise machine belts, forearm arm and dumbbell of 6 participants.
+The project will classify the performed exercise into five categories:  
+Class A : exactly according to the specification  
+Class B: throwing the elbows to the front  
+Class C: lifting the dumbbell only halfway  
+Class D: lowering the dumbbell only halfway  
+Class E: throwing the hips to the front  
+
+Class A is the correct way while the classeB to ClassE are the wrong way for doing the exercise. 
+##Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. This project will usee data from accelerometers on the belt, forearm, arm, and dumbbell of participants to analyze if barbell lifts were done in 5 different ways. Data source for this project comes from  http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+```{r warning=FALSE, message=FALSE }
+library(knitr)
+library(pdftools)
+library(caret)
+```
+
+## Data
+Download training and test data.
+```{r eval = FALSE, cache = TRUE}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv","pml-training.csv")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv","pml-testing.csv")
+```
+Extract data
+```{r echo=TRUE}
+train <- read.csv("G:/R/machinelearning/pml-training.csv", header = TRUE)
+test <- read.csv("G:/R/machinelearning/pml-testing.csv", header = TRUE)
+```
+Training data consists of `r nrow(train)` rows and `r ncol(train)` columns.  
+Testing data consists of  `r nrow(test)` rows and `r ncol(test)` columns.  
+
+Verify column name match in the training and test set.
+```{r echo=TRUE}
+setdiff(colnames(train),colnames(test))
+setdiff(colnames(test),colnames(train))
+intersect(colnames(train),colnames(test))
+```  
+Training and test data contain same predictors.
+
+##Data Cleansing
+####Remove non-predictor variables
+Remove the first  7 columns of trainer data that will not be part of predictors. They contain user information and time stamps. 
+```{r}
+head(train[,c(1:7)],6)
+trainclean <- train[,-c(1:7)]
+```
+train data contains `r nrow(trainclean)` observations and `r ncol(trainclean)` variables. 
+
+Remove the first 7 columns from test data.
+```{r}
+testclean <- test[,-c(1:7)]
+```
+test data contains `r nrow(testclean)` observations and `r ncol(testclean)` variables. 
+
+
+####Remove NA columns
+Remove columns that are over 90% with NAs or empty values.
+```{r}
+nacol <- which(colSums(is.na(trainclean) | trainclean == "" )  > 0.9*dim(trainclean)[1]) 
+traindata <- trainclean[,-nacol]
+```
+Cleansed training data contains `r nrow(traindata)` observations and `r ncol(traindata)` variables. 
+
+Remove missing columns from test data
+```{r}
+nacol <- which(colSums(is.na(testclean) | testclean == "" )  > 0.9*dim(testclean)[1]) 
+testdata <- testclean[,-nacol]
+```
+Cleansed test data contains  `r nrow(testdata)` observations and `r ncol(testdata)` variables. 
+
+####Target Column
+Outcome variable is column classe and other columns are predictors.
+The models below will measure the exercises against the classe variable. 
+```{r}
+unique(train$classe)
+```
+Classe variable contains 5 methods of doing the exercises.
+
+###Data Partition
+Partition training data set into two,70% training and 30% testing sets. 
+```{r Data partition }
+set.seed(12345)
+partcols <- createDataPartition(y=traindata$classe, p=0.7, list=FALSE)
+newtrain <- traindata[partcols,]
+newtest <- traindata[-partcols,]
+```
+Partitioned train data contains   `r nrow(newtrain)` observations and `r ncol(newtrain)` variables. 
+Partitioned test data contains   `r nrow(newtest)` observations and `r ncol(newtest)` variables. 
+##Models  
+
+Three different models are analyzed to provide the best fit.  
+###Decision tree (CV)  
+
+Model uses 5-fold cross validation
+```{r eval = TRUE }
+trcontrol <- trainControl(method="cv", number=5)
+modelCV <- train(classe~., data=newtrain, method="rpart", trControl=trcontrol)
+modelCV
+```
+####Prediction(CV)  
+Validate model with test data and create confusion matrix
+```{r eval = TRUE }
+modelCVpredict <- predict(modelCV,newdata=newtest)
+modelCVconfusion <- confusionMatrix(modelCVpredict,newtest$classe)
+modelCVconfusion
+```
+Model shows an accuracy of `r modelCVconfusion$overall[1]`.
+
+###Gradient Boosting Model(GBM)
+
+```{r eval = TRUE }
+trControl <- trainControl(method = "repeatedcv", number = 5, repeats = 5)
+modelGBM <- train(classe ~ ., data = newtrain, method = "gbm", trControl = trControl, verbose=FALSE)
+modelGBM
+```
+####Prediction(GBM)
+Validate model with test data and create confusion matrix
+```{r eval = TRUE }
+modelGBMpredict <- predict(modelGBM, newdata=newtest)
+modelGBMconfusion <- confusionMatrix(modelGBMpredict, newtest$classe)
+modelGBMconfusion
+```
+Model shows an accuracy of `r  modelGBMconfusion$overall[1]`.
+
+###Random Forest (RF)
+Using a 5 fold cross-validation with repeats = 5
+```{r Random forest, eval = TRUE}
+trControl = trainControl(method = "repeatedcv", number = 5,repeats = 5)
+modelRF <- train(classe~., data=newtrain, method="rf", proxy=TRUE, trControl = trControl)
+modelRF$finalModel
+```
+####Prediction(RF)
+```{r RF_Pred, eval = TRUE }
+modelRFpredict <- predict(modelRF, newdata=newtest)
+modelRFconfusion <- confusionMatrix(modelRFpredict , newtest$classe)
+modelRFconfusion
+```
+####Best fit
+The three models are compared.  
+```{r model_bestfit, eval = TRUE}
+modelAcc <- data.frame( Modeltype = c('CV', 'GBM','RF'),
+                  Accuracy = rbind(round(modelCVconfusion$overall['Accuracy'], 4),
+                                   round(modelGBMconfusion$overall['Accuracy'], 4),
+                                  round(modelRFconfusion$overall['Accuracy'], 4)))                
+modelAcc
+```
+Random forest yields better result with an accuracy of `r  round(modelRFconfusion$overall['Accuracy'], 4)`.  
+
+#####RF - Accuracy 
+```{r RF_Acc, eval = TRUE }
+plot(modelRFconfusion$table, col = modelRFconfusion$byClass, 
+     main = paste("Random Forest - Accuracy =",
+                  round(modelRFconfusion$overall['Accuracy'], 4)))
+dev.copy2pdf(file = "RFAcc.pdf")
+```
+
+#####RF - Error  
+Measure OOB error rates of the model 
+```{r RF_ErrorPlot, eval = TRUE }
+plot(modelRF$finalModel, main="Random Forest - Error rate vs. Number of trees")
+dev.copy2pdf(file = "RFErr.pdf")
+```
+it shows that errors stabilize around 100 trees
+
+
+Find which set of predictors give the best accuracy .
+```{r RF_PredAcc, eval = TRUE }
+ggplot(data=modelRF,aes(x=modelRF$results$mtry, y=modelRF$results$Accuracy)) +
+             theme_classic() + 
+             labs(title="Random Forest - Accuracy vs. predictors",
+                 x="RandomSelectedPredictors",
+                 y="Accuracy(Bootstrap)")  
+ggsave("RFPred.pdf")
+```  
+
+####RF - Variable importance  
+It may be of interest to know variables important in the random forest model. 
+```{r RF_Impvar, eval = TRUE }
+RFImp  <- varImp(modelRF)
+ggplot(data=RFImp,aes(x=RFImp$importance$Overall, y=RFImp$importance)) + 
+          labs(title="Random Forest - Relative importance of predictor variable",
+                 x="Importance",
+                 y="Feature") +
+          geom_bar(stat="identity",fill="navyblue",alpha=.8,width=.8)  
+ggsave("RFImp.pdf")
+dev.off()
+```
+
+Roll_belt has a significant impact in measuring the outcome of random forest model.
+
+## Conclusion  
+Use the random forest model to predict the 20 quiz results.  
+
+```{r eval = TRUE }
+modelRFFinal <- predict(modelRF, newdata=test)
+modelRFFinal
+```
