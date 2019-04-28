@@ -3,4 +3,4 @@ Class B: throwing the elbows to the front
 Class C: lifting the dumbbell only halfway
 Class D: lowering the dumbbell only halfway
 Class E: throwing the hips to the front
-To access the report, please go to: https://github.com/amhk8000/machine-learning/PA_machine_learning.html
+To access the report, please go to: https://amhk8000.github.io/machine-learning/PA_machine_learning.html
